@@ -1,4 +1,8 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Language where
+
+import Data.List
 
 type Name = String
 
@@ -47,3 +51,67 @@ prelude = [("I", ["x"], EVar "x")
   , ("compose", ["f", "g", "x"], EAp (EVar "f") (EAp (EVar "g") (EVar "x")))
   , ("twice", ["f"], EAp (EVar "f") (EVar "f"))
           ]
+
+
+class Fmt a where
+  iNil :: a
+
+  iStr :: String -> a
+
+  iAppend :: a -> a -> a
+
+  iNewline :: a
+
+  iIndent :: a -> a
+
+  iDisplay :: a -> String
+
+iConcat :: Fmt a => [a] -> a
+iConcat = foldl' iAppend iNil
+
+iInterleave :: Fmt a => a -> [a] -> a
+iInterleave delim = iConcat . intersperse delim
+
+-- Allows formatting with efficient appends
+data ISeq = INil
+          | IStr String
+          | IAppend ISeq ISeq
+          deriving (Show)
+
+instance Fmt ISeq where
+  iNil = INil
+
+  iStr = IStr
+
+  iAppend = IAppend
+
+  iNewline = iStr "\n"
+
+  iIndent = id
+
+  iDisplay = undefined -- TODO
+
+pretty :: forall a. Fmt a => CoreExpr -> a
+pretty (EVar x) = iStr x
+pretty (ENum n) = iStr $ show n
+pretty (EAp e1 e2) = (pretty e1) `iAppend` (iStr " ") `iAppend` (pretty e2)
+pretty (ELet irec defns expr) = iConcat [iStr keyword
+                                        , iNewline
+                                        , iStr " "
+                                        , iIndent (prettyDefns defns)
+                                        , iNewline
+                                        , iStr "in"
+                                        , pretty expr
+                                        ]
+  where
+    keyword = if isRec irec then "letrec" else "let"
+
+    prettyDefns :: [(Name, CoreExpr)] -> a
+    prettyDefns defns = iInterleave sep (fmap prettyDefn defns)
+      where
+        sep :: a
+        sep = iConcat [iStr ";", iNewline]
+
+        prettyDefn :: (Name, CoreExpr) -> a
+        prettyDefn (name, expr) = iConcat []
+pretty _ = error "not implemented"
