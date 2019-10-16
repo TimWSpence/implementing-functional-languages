@@ -2,7 +2,7 @@
 
 module Language where
 
-import Data.List
+import           Data.List
 
 type Name = String
 
@@ -89,12 +89,18 @@ instance Fmt ISeq where
 
   iIndent = id
 
-  iDisplay = undefined -- TODO
+  iDisplay seq = flatten [seq]
+
+flatten :: [ISeq] -> String
+flatten []                = ""
+flatten (INil:tail)       = flatten tail
+flatten (IStr str:tail) = str ++ flatten tail
+flatten (IAppend seq1 seq2: tail) = flatten (seq1:seq2:tail)
 
 pretty :: forall a. Fmt a => CoreExpr -> a
 pretty (EVar x) = iStr x
 pretty (ENum n) = iStr $ show n
-pretty (EAp e1 e2) = (pretty e1) `iAppend` (iStr " ") `iAppend` (pretty e2)
+pretty (EAp e1 e2) = pretty e1 `iAppend` iStr " " `iAppend` pretty e2
 pretty (ELet irec defns expr) = iConcat [iStr keyword
                                         , iNewline
                                         , iStr " "
