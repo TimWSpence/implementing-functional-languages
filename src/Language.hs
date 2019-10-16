@@ -72,6 +72,20 @@ iConcat = foldl' iAppend iNil
 iInterleave :: Fmt a => a -> [a] -> a
 iInterleave delim = iConcat . intersperse delim
 
+iNum :: Fmt a => Int -> a
+iNum = iStr . show
+
+iFWNum :: Fmt a => Int -> Int -> a
+iFWNum width n = iStr (replicate m ' ' ++ s)
+  where
+    s = show n
+    m = width - length s
+
+iLayn :: Fmt a => [a] -> a
+iLayn xs = iConcat (fmap layItem $ zip [1..] xs)
+  where
+    layItem (n, x) = iConcat [iFWNum 4 n, iStr ") ", iIndent x, iNewline]
+
 -- Allows formatting with efficient appends
 data ISeq = INil
           | IStr String
