@@ -76,6 +76,8 @@ iInterleave delim = iConcat . intersperse delim
 data ISeq = INil
           | IStr String
           | IAppend ISeq ISeq
+          | IIndent ISeq
+          | INewline
           deriving (Show)
 
 instance Fmt ISeq where
@@ -85,17 +87,19 @@ instance Fmt ISeq where
 
   iAppend = IAppend
 
-  iNewline = iStr "\n"
+  iNewline = INewline
 
-  iIndent = id
+  iIndent = IIndent
 
-  iDisplay seq = flatten [seq]
+  iDisplay s = flatten 0 [(s,0)]
 
-flatten :: [ISeq] -> String
-flatten []                = ""
-flatten (INil:tail)       = flatten tail
-flatten (IStr str:tail) = str ++ flatten tail
-flatten (IAppend seq1 seq2: tail) = flatten (seq1:seq2:tail)
+flatten :: Int -> [(ISeq, Int)] -> String
+flatten _ []                             = ""
+flatten col ((INil, _):t)              = flatten col t
+flatten col ((IStr str, _):t)          = str ++ flatten (col + length str) t
+flatten col ((IAppend seq1 seq2, ind):t) = flatten col ((seq1, ind):(seq2, ind):t)
+flatten _ ((INewline, ind):t)            = '\n' : replicate ind ' ' ++ flatten ind t
+flatten col ((IIndent seq1, _):t)      = flatten col ((seq1, col) : t)
 
 pretty :: forall a. Fmt a => CoreExpr -> a
 pretty (EVar x) = iStr x
@@ -103,10 +107,10 @@ pretty (ENum n) = iStr $ show n
 pretty (EAp e1 e2) = pretty e1 `iAppend` iStr " " `iAppend` pretty e2
 pretty (ELet irec defns expr) = iConcat [iStr keyword
                                         , iNewline
-                                        , iStr " "
+                                        , iStr "  "
                                         , iIndent (prettyDefns defns)
                                         , iNewline
-                                        , iStr "in"
+                                        , iStr "in "
                                         , pretty expr
                                         ]
   where
@@ -119,5 +123,5 @@ pretty (ELet irec defns expr) = iConcat [iStr keyword
         sep = iConcat [iStr ";", iNewline]
 
         prettyDefn :: (Name, CoreExpr) -> a
-        prettyDefn (name, expr) = iConcat []
+        prettyDefn (name, expr) = iConcat [iStr name, iStr " = ", iIndent . pretty $ expr]
 pretty _ = error "not implemented"
