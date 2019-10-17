@@ -1,5 +1,14 @@
 module Parser
   (
+    pLit
+  , pVar
+  , pAlt
+  , pThen
+  , pThen3
+  , pThen4
+  , pZeroOrMore
+  , pOneOrMore
+  , pEmpty
   ) where
 
 import           Data.Char
@@ -47,3 +56,27 @@ pThen f p1 p2 toks = do
   (a, toks1) <- p1 toks
   (b, toks2) <- p2 toks1
   return (f a b, toks2)
+
+pThen3 :: (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
+pThen3 f p1 p2 p3 toks = do
+  (f2, toks1) <- pThen f p1 p2 toks
+  (d, toks2) <- p3 toks1
+  return (f2 d, toks2)
+
+pThen4 :: (a -> b -> c -> d -> e) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e
+pThen4 f p1 p2 p3 p4 toks = do
+  (f2, toks1) <- pThen3 f p1 p2 p3 toks
+  (e, toks2) <- p4 toks1
+  return (f2 e, toks2)
+
+pZeroOrMore :: Parser a -> Parser [a]
+pZeroOrMore p = pOneOrMore p `pAlt` pEmpty []
+
+pOneOrMore :: Parser a -> Parser [a]
+pOneOrMore p toks = do
+  (a, toks1) <- p toks
+  (rest, toks2) <- pZeroOrMore p toks1
+  return (a:rest, toks2)
+
+pEmpty :: a -> Parser a
+pEmpty a toks = [(a, toks)]
