@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module Parser
   (
     pLit
@@ -9,6 +11,8 @@ module Parser
   , pZeroOrMore
   , pOneOrMore
   , pEmpty
+  , pApply
+  , pOneOrMoreWithSep
   ) where
 
 import           Data.Char
@@ -87,3 +91,11 @@ pApply :: Parser a -> (a -> b) -> Parser b
 pApply p f toks = do
   (a, toks1) <- p toks
   return (f a, toks1)
+
+pOneOrMoreWithSep :: Parser a -> Parser b -> Parser [a]
+pOneOrMoreWithSep pa pb toks = do
+  (a, toks1) <- pa toks
+  (rest, toks2) <- pab toks1
+  return (a:rest, toks2)
+    where
+      pab = pZeroOrMore (pThen (\b a -> a) pb pa)
