@@ -51,6 +51,7 @@ pVar _ = [] --TODO
 pAlt :: Parser a -> Parser a -> Parser a
 pAlt p1 p2 toks = p1 toks ++ p2 toks
 
+-- TODO applicative instance for Parser
 pThen :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
 pThen f p1 p2 toks = do
   (a, toks1) <- p1 toks
@@ -80,3 +81,9 @@ pOneOrMore p toks = do
 
 pEmpty :: a -> Parser a
 pEmpty a toks = [(a, toks)]
+
+-- TODO functor instance for Parser
+pApply :: Parser a -> (a -> b) -> Parser b
+pApply p f toks = do
+  (a, toks1) <- p toks
+  return (f a, toks1)
