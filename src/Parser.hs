@@ -3,6 +3,7 @@
 module Parser
   (
     pLit
+  , pSat
   , pVar
   , pAlt
   , pThen
@@ -38,7 +39,8 @@ clex = _clex 0
       var_tok = c : takeWhile isIdChar cs
       var_rest = dropWhile isIdChar cs
 
-      isIdChar c = isAlpha c || isDigit c || (c == '_')
+isIdChar :: Char -> Bool
+isIdChar c = isAlpha c || isDigit c || (c == '_')
 
 twoCharOps :: [String]
 twoCharOps = ["==", "~=", ">=", "<=", "->"]
@@ -46,11 +48,13 @@ twoCharOps = ["==", "~=", ">=", "<=", "->"]
 type Parser a = [Token] -> [(a, [Token])]
 
 pLit :: String -> Parser String
-pLit s ((_, tok):toks) | s == tok = [(s, toks)]
-pLit _ _ = []
+pLit s = pSat (== s)
 
 pVar :: Parser String
-pVar _ = [] --TODO
+pVar = pSat isVar
+  where
+    isVar [] = False
+    isVar (c:cs) = isAlpha c && all isIdChar cs
 
 pAlt :: Parser a -> Parser a -> Parser a
 pAlt p1 p2 toks = p1 toks ++ p2 toks
@@ -99,3 +103,7 @@ pOneOrMoreWithSep pa pb toks = do
   return (a:rest, toks2)
     where
       pab = pZeroOrMore (pThen (\b a -> a) pb pa)
+
+pSat :: (String -> Bool) -> Parser String
+pSat pred ((_, tok):toks) | pred tok = [(tok, toks)]
+pSat _ _ = []
