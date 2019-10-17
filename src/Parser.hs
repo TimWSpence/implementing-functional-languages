@@ -111,3 +111,6 @@ pOneOrMoreWithSep pa pb toks = do
 pSat :: (String -> Bool) -> Parser String
 pSat pred ((_, tok):toks) | pred tok = [(tok, toks)]
 pSat _ _ = []
+
+pNum :: Parser Int
+pNum = pApply (pSat (all isDigit)) read
