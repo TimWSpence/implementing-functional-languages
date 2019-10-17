@@ -2,7 +2,8 @@
 
 module Parser
   (
-    pLit
+    clex
+  , pLit
   , pSat
   , pVar
   , pAlt
@@ -102,7 +103,7 @@ pOneOrMoreWithSep pa pb toks = do
   (rest, toks2) <- pab toks1
   return (a:rest, toks2)
     where
-      pab = pZeroOrMore (pThen (\b a -> a) pb pa)
+      pab = pZeroOrMore (pThen (\_ a -> a) pb pa)
 
 pSat :: (String -> Bool) -> Parser String
 pSat pred ((_, tok):toks) | pred tok = [(tok, toks)]
