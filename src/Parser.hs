@@ -46,13 +46,16 @@ isIdChar c = isAlpha c || isDigit c || (c == '_')
 twoCharOps :: [String]
 twoCharOps = ["==", "~=", ">=", "<=", "->"]
 
+keywords :: [String]
+keywords = ["let", "letrec", "case", "in", "of", "Pack"]
+
 type Parser a = [Token] -> [(a, [Token])]
 
 pLit :: String -> Parser String
 pLit s = pSat (== s)
 
 pVar :: Parser String
-pVar = pSat isVar
+pVar = pSat $ \s -> s `notElem` keywords && isVar s
   where
     isVar [] = False
     isVar (c:cs) = isAlpha c && all isIdChar cs
