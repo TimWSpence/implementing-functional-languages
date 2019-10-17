@@ -29,3 +29,21 @@ clex = _clex 0
 
 twoCharOps :: [String]
 twoCharOps = ["==", "~=", ">=", "<=", "->"]
+
+type Parser a = [Token] -> [(a, [Token])]
+
+pLit :: String -> Parser String
+pLit s ((_, tok):toks) | s == tok = [(s, toks)]
+pLit _ _ = []
+
+pVar :: Parser String
+pVar _ = [] --TODO
+
+pAlt :: Parser a -> Parser a -> Parser a
+pAlt p1 p2 toks = p1 toks ++ p2 toks
+
+pThen :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
+pThen f p1 p2 toks = do
+  (a, toks1) <- p1 toks
+  (b, toks2) <- p2 toks1
+  return (f a b, toks2)
