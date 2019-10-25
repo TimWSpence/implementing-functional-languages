@@ -1,9 +1,13 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Language where
 
 import Format
 import Parser
+import Data.List
 
 type Name = String
 
@@ -25,6 +29,9 @@ data Expr a = EVar Name                         -- variables
             | ECase (Expr a) [Alter a]          -- case expressions
             | ELam [a] (Expr a)                 -- lambda abstractions
 
+instance Show CoreExpr where
+  show e = iDisplay . pretty @ISeq $ e
+
 type CoreExpr = Expr Name
 
 isAtomicExpr :: Expr a -> Bool
@@ -43,6 +50,9 @@ type CoreProgram = Program Name
 
 type ScDefn a = (Name, [a], Expr a)
 type CoreScDefn = ScDefn Name
+
+instance {-# Overlapping #-} Show CoreScDefn where
+  show (name, vars, e) = name <> (if vars == [] then "" else (" " <> intercalate "," vars)) <> " = " <> show e
 
 prelude :: CoreProgram
 prelude = [("I", ["x"], EVar "x")
@@ -78,6 +88,24 @@ pretty (ELet irec defns expr) = iConcat [iStr keyword
 
         prettyDefn :: (Name, CoreExpr) -> a
         prettyDefn (name, expr) = iConcat [iStr name, iStr " = ", iIndent . pretty $ expr]
+pretty (ECase e as) = iConcat [iStr "case "
+                              , pretty e
+                              , iStr " of "
+                              , iIndent (prettyAlters as)
+                              ]
+  where
+    prettyAlters :: [Alter Name] -> a
+    prettyAlters as = iInterleave sep (fmap prettyAlter as)
+
+    prettyAlter (tag, vars, e) = iConcat [iStr "<"
+                                         , iStr $ show tag
+                                         , iStr "> "
+                                         , iInterleave (iStr ",") (fmap iStr vars)
+                                         , iStr " -> "
+                                         , pretty e
+                                         ]
+
+    sep = iConcat [iStr ";", iNewline]
 pretty _ = error "not implemented"
 
 parse :: String -> CoreProgram
@@ -91,7 +119,7 @@ syntax = take_first_parse . pProgram
     take_first_parse _ = error "Syntax error"
 
 pProgram :: Parser CoreProgram
-pProgram = pZeroOrMore pSc
+pProgram = pOneOrMoreWithSep pSc (pLit ";")
 
 pSc :: Parser CoreScDefn
 pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
