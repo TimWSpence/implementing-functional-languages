@@ -3,9 +3,13 @@
 module Parser
   (
     clex
+  , Parser
+  , Token
+  , pParens
   , pLit
   , pSat
   , pVar
+  , pNum
   , pAlt
   , pThen
   , pThen3
@@ -34,6 +38,7 @@ clex = _clex 0
     | isSpace c = _clex n cs
     | isDigit c = (n, num_token) : _clex n num_rest
     | isAlpha c = (n, var_tok) : _clex n var_rest
+    | otherwise = (n, [c]) : _clex n cs
     where
       num_token = c : takeWhile isDigit cs
       num_rest = dropWhile isDigit cs
@@ -114,3 +119,6 @@ pSat _ _ = []
 
 pNum :: Parser Int
 pNum = pApply (pSat (all isDigit)) read
+
+pParens :: Parser a -> Parser a
+pParens p = pThen3 (\_ v _ -> v) (pLit "()") p (pLit ")")
