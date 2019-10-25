@@ -48,11 +48,14 @@ rhssOf = fmap snd
 type Program a = [ScDefn a]
 type CoreProgram = Program Name
 
+instance {-# Overlapping #-} Show CoreProgram where
+  show scs = intercalate ";\n" . fmap (show @CoreScDefn) $ scs
+
 type ScDefn a = (Name, [a], Expr a)
 type CoreScDefn = ScDefn Name
 
 instance {-# Overlapping #-} Show CoreScDefn where
-  show (name, vars, e) = name <> (if vars == [] then "" else (" " <> intercalate "," vars)) <> " = " <> show e
+  show (name, vars, e) = name <> (if vars == [] then "" else (" " <> intercalate " " vars)) <> " = " <> show e
 
 prelude :: CoreProgram
 prelude = [("I", ["x"], EVar "x")
@@ -127,7 +130,7 @@ pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
     mk_sc name vars _ expr = (name, vars, expr)
 
 pExpr :: Parser CoreExpr
-pExpr = pEVar `pAlt` pENum `pAlt` pEConstr `pAlt` pELet `pAlt` pECase `pAlt` pELam
+pExpr = pEVar `pAlt` pENum `pAlt` pEConstr `pAlt` pELet `pAlt` pECase `pAlt` pELam `pAlt` (pParens pExpr)
   where
     pEVar = pApply pVar EVar
     pENum = pApply pNum ENum
@@ -135,21 +138,12 @@ pExpr = pEVar `pAlt` pENum `pAlt` pEConstr `pAlt` pELet `pAlt` pECase `pAlt` pEL
       where
         pTags = pThen3 (\c _ arity -> (c, arity)) pNum (pLit ",") pNum
     pEAp = undefined
-    pELet = pThen4 (\_ binds _ expr -> ELet NotRecursive binds expr) (pLit "let") (pOneOrMore pLet) (pLit "in") pExpr
-      `pAlt` pThen4 (\_ binds _ expr -> ELet Recursive binds expr) (pLit "letrec") (pOneOrMore pLet) (pLit "in") pExpr
+    pELet = pThen4 (\_ binds _ expr -> ELet NotRecursive binds expr) (pLit "let") (pOneOrMoreWithSep pLet (pLit ";")) (pLit "in") pExpr
+      `pAlt` pThen4 (\_ binds _ expr -> ELet Recursive binds expr) (pLit "letrec") (pOneOrMoreWithSep pLet (pLit ";")) (pLit "in") pExpr
       where
-        pLet = pThen4 (\var _ e _ -> (var, e))   pVar (pLit "=") pExpr (pLit ";")
-    pECase = pThen4 (\_ e _ cases -> ECase e cases) (pLit "case") pExpr (pLit "of") (pOneOrMore pCase)
+        pLet = pThen3 (\var _ e -> (var, e))   pVar (pLit "=") pExpr
+    pECase = pThen4 (\_ e _ cases -> ECase e cases) (pLit "case") pExpr (pLit "of") (pOneOrMoreWithSep pCase (pLit ";"))
       where
         pTag = pThen3 (\_ n _ -> n) (pLit "<") pNum (pLit ">")
         pCase = pThen4 (\t as _ e -> (t, as, e)) pTag (pZeroOrMore pVar) (pLit "->") pExpr
     pELam = pParens $ pThen4 (\_ vars _ e -> ELam vars e) (pLit "\\") (pOneOrMore pVar) (pLit ".") pExpr
-
--- data Expr a = EVar Name                         -- variables
---             | ENum Int                          -- numbers
---             | EConstr Int Int                   -- constructor tag arity
-
---             | EAp (Expr a) (Expr a)             -- applications
---             | ELet IsRec [(a, Expr a)] (Expr a) -- let expressions
---             | ECase (Expr a) [Alter a]          -- case expressions
---             | ELam [a] (Expr a)                 -- lambda abstractions
