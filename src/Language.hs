@@ -109,6 +109,11 @@ pretty (ECase e as) = iConcat [iStr "case "
                                          ]
 
     sep = iConcat [iStr ";", iNewline]
+pretty (ELam vars e) = iConcat [iStr "\\"
+                               , iInterleave (iStr " ") (fmap iStr vars)
+                               , iStr ". "
+                               , pretty e
+                               ]
 pretty _ = error "not implemented"
 
 parse :: String -> CoreProgram
@@ -129,21 +134,35 @@ pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
   where
     mk_sc name vars _ expr = (name, vars, expr)
 
+--TODO separate parsing of atomic expressions eg should only be able to apply to an atomic expr
 pExpr :: Parser CoreExpr
-pExpr = pEVar `pAlt` pENum `pAlt` pEConstr `pAlt` pELet `pAlt` pECase `pAlt` pELam `pAlt` (pParens pExpr)
+pExpr = pAExpr `pAlt` pEAp `pAlt` pELet `pAlt` pECase `pAlt` pELam
   where
+    pAExpr = pEVar `pAlt` pENum `pAlt` pEConstr `pAlt` (pParens pExpr)
+
     pEVar = pApply pVar EVar
+
     pENum = pApply pNum ENum
+
     pEConstr = pThen4 (\_ _ (c, arity) _ -> EConstr c arity) (pLit "Pack") (pLit "{") pTags (pLit "}")
       where
         pTags = pThen3 (\c _ arity -> (c, arity)) pNum (pLit ",") pNum
-    pEAp = undefined
+
+    --A bit weird due to left recursion in the "obvious" implementation
+    pEAp = pApply (pOneOrMore pAExpr) apChain
+      where
+        apChain [fn,arg] = EAp fn arg
+        apChain _ = error "Syntax error in apply"
+
     pELet = pThen4 (\_ binds _ expr -> ELet NotRecursive binds expr) (pLit "let") (pOneOrMoreWithSep pLet (pLit ";")) (pLit "in") pExpr
       `pAlt` pThen4 (\_ binds _ expr -> ELet Recursive binds expr) (pLit "letrec") (pOneOrMoreWithSep pLet (pLit ";")) (pLit "in") pExpr
       where
-        pLet = pThen3 (\var _ e -> (var, e))   pVar (pLit "=") pExpr
+        pLet = pThen3 (\var _ e -> (var, e)) pVar (pLit "=") pExpr
+
     pECase = pThen4 (\_ e _ cases -> ECase e cases) (pLit "case") pExpr (pLit "of") (pOneOrMoreWithSep pCase (pLit ";"))
       where
         pTag = pThen3 (\_ n _ -> n) (pLit "<") pNum (pLit ">")
         pCase = pThen4 (\t as _ e -> (t, as, e)) pTag (pZeroOrMore pVar) (pLit "->") pExpr
-    pELam = pParens $ pThen4 (\_ vars _ e -> ELam vars e) (pLit "\\") (pOneOrMore pVar) (pLit ".") pExpr
+
+    pELam = pThen4 (\_ vars _ e -> ELam vars e) (pLit "\\") (pOneOrMore pVar) (pLit ".") pExpr
+

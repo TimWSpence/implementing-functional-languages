@@ -5,6 +5,7 @@ module Parser
     clex
   , Parser
   , Token
+  , pFail
   , pParens
   , pLit
   , pSat
@@ -121,4 +122,7 @@ pNum :: Parser Int
 pNum = pApply (pSat (all isDigit)) read
 
 pParens :: Parser a -> Parser a
-pParens p = pThen3 (\_ v _ -> v) (pLit "()") p (pLit ")")
+pParens p = pThen3 (\_ v _ -> v) (pLit "(") p (pLit ")")
+
+pFail :: Parser a
+pFail toks = []
