@@ -1,128 +1,95 @@
-{-# LANGUAGE TypeSynonymInstances #-}
-
 module Parser
   (
-    clex
-  , Parser
-  , Token
-  , pFail
-  , pParens
-  , pLit
-  , pSat
-  , pVar
-  , pNum
-  , pAlt
-  , pThen
-  , pThen3
-  , pThen4
-  , pZeroOrMore
-  , pOneOrMore
-  , pEmpty
-  , pApply
-  , pOneOrMoreWithSep
+    parse
   ) where
 
-import           Data.Char
+import           AST
+import           Parser.CombinatorParser
+import           Parser.Lexer
 
+parse :: String -> CoreProgram
+parse = syntax . clex
 
-type LineNumber = Int
-type Token = (LineNumber, String)
-
-clex :: String -> [Token]
-clex = _clex 0
+syntax :: [Token] -> CoreProgram
+syntax = take_first_parse . pProgram
   where
-  _clex :: Int -> String -> [Token]
-  _clex _ [] = []
-  _clex n (x:y:t) | [x,y] `elem` twoCharOps = (n, [x,y]) : _clex n t
-  _clex n (c:cs)
-    | c == '\n' = _clex (n+1) cs
-    | isSpace c = _clex n cs
-    | isDigit c = (n, num_token) : _clex n num_rest
-    | isAlpha c = (n, var_tok) : _clex n var_rest
-    | otherwise = (n, [c]) : _clex n cs
-    where
-      num_token = c : takeWhile isDigit cs
-      num_rest = dropWhile isDigit cs
-      var_tok = c : takeWhile isIdChar cs
-      var_rest = dropWhile isIdChar cs
+    take_first_parse ((prog, []):_) = prog
+    take_first_parse (_: others)    = take_first_parse others
+    take_first_parse _              = error "Syntax error"
 
-isIdChar :: Char -> Bool
-isIdChar c = isAlpha c || isDigit c || (c == '_')
+pProgram :: Parser CoreProgram
+pProgram = pOneOrMoreWithSep pSc (pLit ";")
 
-twoCharOps :: [String]
-twoCharOps = ["==", "~=", ">=", "<=", "->", "&&", "||"]
-
-keywords :: [String]
-keywords = ["let", "letrec", "case", "in", "of", "Pack"]
-
-type Parser a = [Token] -> [(a, [Token])]
-
-pLit :: String -> Parser String
-pLit s = pSat (== s)
-
-pVar :: Parser String
-pVar = pSat $ \s -> s `notElem` keywords && isVar s
+pSc :: Parser CoreScDefn
+pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
   where
-    isVar [] = False
-    isVar (c:cs) = isAlpha c && all isIdChar cs
+    mk_sc name vars _ expr = (name, vars, expr)
 
-pAlt :: Parser a -> Parser a -> Parser a
-pAlt p1 p2 toks = p1 toks ++ p2 toks
+--TODO separate parsing of atomic expressions eg should only be able to apply to an atomic expr
+pExpr :: Parser CoreExpr
+pExpr = pELet `pAlt` pECase `pAlt` pELam `pAlt` pExpr1
+  where
+    pELet = pThen4 (\_ binds _ expr -> ELet NotRecursive binds expr) (pLit "let") (pOneOrMoreWithSep pLet (pLit ";")) (pLit "in") pExpr
+      `pAlt` pThen4 (\_ binds _ expr -> ELet Recursive binds expr) (pLit "letrec") (pOneOrMoreWithSep pLet (pLit ";")) (pLit "in") pExpr
+      where
+        pLet = pThen3 (\var _ e -> (var, e)) pVar (pLit "=") pExpr
 
--- TODO applicative instance for Parser
-pThen :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
-pThen f p1 p2 toks = do
-  (a, toks1) <- p1 toks
-  (b, toks2) <- p2 toks1
-  return (f a b, toks2)
+    pECase = pThen4 (\_ e _ cases -> ECase e cases) (pLit "case") pExpr (pLit "of") (pOneOrMoreWithSep pCase (pLit ";"))
+      where
+        pTag = pThen3 (\_ n _ -> n) (pLit "<") pNum (pLit ">")
+        pCase = pThen4 (\t as _ e -> (t, as, e)) pTag (pZeroOrMore pVar) (pLit "->") pExpr
 
-pThen3 :: (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
-pThen3 f p1 p2 p3 toks = do
-  (f2, toks1) <- pThen f p1 p2 toks
-  (d, toks2) <- p3 toks1
-  return (f2 d, toks2)
+    pELam = pThen4 (\_ vars _ e -> ELam vars e) (pLit "\\") (pOneOrMore pVar) (pLit ".") pExpr
 
-pThen4 :: (a -> b -> c -> d -> e) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e
-pThen4 f p1 p2 p3 p4 toks = do
-  (f2, toks1) <- pThen3 f p1 p2 p3 toks
-  (e, toks2) <- p4 toks1
-  return (f2 e, toks2)
+pExpr1 :: Parser CoreExpr
+pExpr1 = pOr `pAlt` pExpr2
+  where
+    pOr = pThen3 (\e _ e2 -> EBin (BOp Or) e e2) pExpr2 (pLit "||") pExpr1
 
-pZeroOrMore :: Parser a -> Parser [a]
-pZeroOrMore p = pOneOrMore p `pAlt` pEmpty []
+pExpr2 :: Parser CoreExpr
+pExpr2 = pAnd `pAlt` pExpr3
+  where
+    pAnd = pThen3 (\e _ e2 -> EBin (BOp And) e e2) pExpr3 (pLit "&&") pExpr2
 
-pOneOrMore :: Parser a -> Parser [a]
-pOneOrMore p toks = do
-  (a, toks1) <- p toks
-  (rest, toks2) <- pZeroOrMore p toks1
-  return (a:rest, toks2)
+pExpr3 :: Parser CoreExpr
+pExpr3 = pRel `pAlt` pExpr4
+  where
+    pRel = pLT `pAlt` pLE `pAlt` pEQ `pAlt` pNEQ `pAlt` pGE `pAlt` pGT
+    pLT = pThen3 (\e _ e2 -> EBin (ROp RLT) e e2) pExpr4 (pLit "<") pExpr3 --TODO finish this mapping
+    pLE = pThen3 (\e _ e2 -> EBin (ROp RLE) e e2) pExpr4 (pLit "<=") pExpr3 --TODO finish this mapping
+    pEQ = pThen3 (\e _ e2 -> EBin (ROp REQ) e e2) pExpr4 (pLit "==") pExpr3 --TODO finish this mapping
+    pNEQ = pThen3 (\e _ e2 -> EBin (ROp RNEQ) e e2) pExpr4 (pLit "~=") pExpr3 --TODO finish this mapping
+    pGE = pThen3 (\e _ e2 -> EBin (ROp RGE) e e2) pExpr4 (pLit ">=") pExpr3 --TODO finish this mapping
+    pGT = pThen3 (\e _ e2 -> EBin (ROp RGT) e e2) pExpr4 (pLit ">") pExpr3 --TODO finish this mapping
 
-pEmpty :: a -> Parser a
-pEmpty a toks = [(a, toks)]
+pExpr4 :: Parser CoreExpr
+pExpr4 = pPlus `pAlt` pMinus `pAlt` pExpr5
+  where
+    pPlus = pThen3 (\e _ e2 -> EBin (NOp Plus) e e2) pExpr5 (pLit "+") pExpr4
+    pMinus = pThen3 (\e _ e2 -> EBin (NOp Minus) e e2) pExpr5(pLit "-") pExpr4
 
--- TODO functor instance for Parser
-pApply :: Parser a -> (a -> b) -> Parser b
-pApply p f toks = do
-  (a, toks1) <- p toks
-  return (f a, toks1)
 
-pOneOrMoreWithSep :: Parser a -> Parser b -> Parser [a]
-pOneOrMoreWithSep pa pb toks = do
-  (a, toks1) <- pa toks
-  (rest, toks2) <- pab toks1
-  return (a:rest, toks2)
-    where
-      pab = pZeroOrMore (pThen (\_ a -> a) pb pa)
+pExpr5 :: Parser CoreExpr
+pExpr5 = pTimes `pAlt` pDiv `pAlt` pExpr6
+  where
+    pTimes = pThen3 (\e _ e2 -> EBin (NOp Times) e e2) pExpr6 (pLit "*") pExpr5
+    pDiv = pThen3 (\e _ e2 -> EBin (NOp Div) e e2) pExpr6 (pLit "/") pExpr5
 
-pSat :: (String -> Bool) -> Parser String
-pSat pred ((_, tok):toks) | pred tok = [(tok, toks)]
-pSat _ _ = []
+pExpr6 :: Parser CoreExpr
+pExpr6 = pAExpr `pAlt` pEAp
+  where
+    pAExpr = pEVar `pAlt` pENum `pAlt` pEConstr `pAlt` (pParens pExpr)
 
-pNum :: Parser Int
-pNum = pApply (pSat (all isDigit)) read
+    pEVar = pApply pVar EVar
 
-pParens :: Parser a -> Parser a
-pParens p = pThen3 (\_ v _ -> v) (pLit "(") p (pLit ")")
+    pENum = pApply pNum ENum
 
-pFail :: Parser a
-pFail toks = []
+    pEConstr = pThen4 (\_ _ (c, arity) _ -> EConstr c arity) (pLit "Pack") (pLit "{") pTags (pLit "}")
+      where
+        pTags = pThen3 (\c _ arity -> (c, arity)) pNum (pLit ",") pNum
+
+    --A bit weird due to left recursion in the "obvious" implementation
+    pEAp = pApply (pOneOrMore pAExpr) apChain
+      where
+        apChain [fn,arg] = EAp fn arg
+        apChain _        = error "Syntax error in apply"
