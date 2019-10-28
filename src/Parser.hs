@@ -59,12 +59,12 @@ pExpr3 :: Parser CoreExpr
 pExpr3 = pRel <|> pExpr4
   where
     pRel = pLT <|> pLE <|> pEQ <|> pNEQ <|> pGE <|> pGT
-    pLT = liftA3 (\e _ e2 -> EBin (ROp RLT) e e2) pExpr4 (pLit "<") pExpr3 --TODO finish this mapping
-    pLE = liftA3 (\e _ e2 -> EBin (ROp RLE) e e2) pExpr4 (pLit "<=") pExpr3 --TODO finish this mapping
-    pEQ = liftA3 (\e _ e2 -> EBin (ROp REQ) e e2) pExpr4 (pLit "==") pExpr3 --TODO finish this mapping
-    pNEQ = liftA3 (\e _ e2 -> EBin (ROp RNEQ) e e2) pExpr4 (pLit "~=") pExpr3 --TODO finish this mapping
-    pGE = liftA3 (\e _ e2 -> EBin (ROp RGE) e e2) pExpr4 (pLit ">=") pExpr3 --TODO finish this mapping
-    pGT = liftA3 (\e _ e2 -> EBin (ROp RGT) e e2) pExpr4 (pLit ">") pExpr3 --TODO finish this mapping
+    pLT = liftA3 (\e _ e2 -> EBin (ROp RLT) e e2) pExpr4 (pLit "<") pExpr3
+    pLE = liftA3 (\e _ e2 -> EBin (ROp RLE) e e2) pExpr4 (pLit "<=") pExpr3
+    pEQ = liftA3 (\e _ e2 -> EBin (ROp REQ) e e2) pExpr4 (pLit "==") pExpr3
+    pNEQ = liftA3 (\e _ e2 -> EBin (ROp RNEQ) e e2) pExpr4 (pLit "~=") pExpr3
+    pGE = liftA3 (\e _ e2 -> EBin (ROp RGE) e e2) pExpr4 (pLit ">=") pExpr3
+    pGT = liftA3 (\e _ e2 -> EBin (ROp RGT) e e2) pExpr4 (pLit ">") pExpr3
 
 pExpr4 :: Parser CoreExpr
 pExpr4 = pPlus <|> pMinus <|> pExpr5
